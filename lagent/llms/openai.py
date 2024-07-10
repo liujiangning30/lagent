@@ -4,7 +4,7 @@ import time
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from logging import getLogger
-from threading import Lock
+# from threading import Lock
 from typing import Dict, List, Optional, Union
 
 import requests
@@ -56,7 +56,8 @@ class GPTAPI(BaseAPIModel):
                  meta_template: Optional[Dict] = [
                      dict(role='system', api_role='system'),
                      dict(role='user', api_role='user'),
-                     dict(role='assistant', api_role='assistant')
+                     dict(role='assistant', api_role='assistant'),
+                     dict(role='environment', api_role='system')
                  ],
                  openai_api_base: str = OPENAI_API_BASE,
                  proxies: Optional[Dict] = None,
@@ -146,7 +147,14 @@ class GPTAPI(BaseAPIModel):
         resp = ''
         finished = False
         stop_words = gen_params.get('stop_words')
-        for text in self._chat(inputs, **gen_params):
+        # mapping to role that openai supports
+        messages = inputs.copy()
+        for item in messages:
+            for role_cfg in self.meta_template:
+                if item['role'] == role_cfg['role']:
+                    item['role'] = role_cfg['api_role']
+                    break
+        for text in self._chat(messages, **gen_params):
             resp += text
             if not resp:
                 continue
@@ -197,22 +205,22 @@ class GPTAPI(BaseAPIModel):
 
         max_num_retries = 0
         while max_num_retries < self.retry:
-            self._wait()
+            # self._wait()
 
-            with Lock():
-                if len(self.invalid_keys) == len(self.keys):
-                    raise RuntimeError('All keys have insufficient quota.')
+            # with Lock():
+            if len(self.invalid_keys) == len(self.keys):
+                raise RuntimeError('All keys have insufficient quota.')
 
-                # find the next valid key
-                while True:
-                    self.key_ctr += 1
-                    if self.key_ctr == len(self.keys):
-                        self.key_ctr = 0
+            # find the next valid key
+            while True:
+                self.key_ctr += 1
+                if self.key_ctr == len(self.keys):
+                    self.key_ctr = 0
 
-                    if self.keys[self.key_ctr] not in self.invalid_keys:
-                        break
+                if self.keys[self.key_ctr] not in self.invalid_keys:
+                    break
 
-                key = self.keys[self.key_ctr]
+            key = self.keys[self.key_ctr]
 
             header = {
                 'Authorization': f'Bearer {key}',
@@ -220,10 +228,10 @@ class GPTAPI(BaseAPIModel):
             }
 
             if self.orgs:
-                with Lock():
-                    self.org_ctr += 1
-                    if self.org_ctr == len(self.orgs):
-                        self.org_ctr = 0
+                # with Lock():
+                self.org_ctr += 1
+                if self.org_ctr == len(self.orgs):
+                    self.org_ctr = 0
                 header['OpenAI-Organization'] = self.orgs[self.org_ctr]
 
             response = dict()
