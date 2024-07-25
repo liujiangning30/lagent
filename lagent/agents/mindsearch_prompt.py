@@ -68,6 +68,16 @@ searcher_input_template_cn = """## 主问题
 {question}
 """
 
+searcher_context_template_en = """## Historical Problem
+{question}
+Answer: {answer}
+"""
+
+searcher_context_template_cn = """## 历史问题
+{question}
+回答：{answer}
+"""
+
 search_template_cn = '## {query}\n\n{result}\n'
 search_template_en = '## {query}\n\n{result}\n'
 
