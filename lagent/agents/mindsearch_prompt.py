@@ -57,7 +57,7 @@ To find the list of students of Professor Tang Xiaoou, I need to find the webpag
 # searcher_system_prompt_en = searcher_system_prompt_en + fewshot_example_en
 
 searcher_input_template_en = """## Final Problem
-{root_question}
+{topic}
 ## Current Problem
 {question}
 """
