@@ -4,6 +4,14 @@ import logging
 from dataclasses import asdict
 from typing import List, Optional, Union
 
+import sys
+import os
+import subprocess
+import time
+import requests
+from loguru import logger
+import threading
+
 import aiohttp
 
 from lagent.llms.base_llm import AsyncLLMMixin, BaseLLM
@@ -672,8 +680,17 @@ class AsyncLMDeployServer(AsyncLLMMixin, LMDeployServer):
             skip_special_tokens=skip_special_tokens,
             timeout=timeout,
             **gen_params)
+        # check alive
+        try:
+            response = requests.get(f"{self.client.api_server_url}/health", timeout=5)
+            if response.status_code == 200:
+                logger.info("Service is alive!")
+            else:
+                logger.info(f"Service is not healthy. Status code: {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            logger.info(f"Failed to connect to the service: {e}")
         async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(3 * 3600)) as session:
+                timeout=aiohttp.ClientTimeout()) as session:
             async with session.post(
                     self.client.completions_v1_url,
                     headers=self.client.headers,
@@ -743,7 +760,7 @@ class AsyncLMDeployServer(AsyncLLMMixin, LMDeployServer):
             timeout=timeout,
             **gen_params)
         async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(3 * 3600)) as session:
+                timeout=aiohttp.ClientTimeout()) as session:
             async with session.post(
                     self.client.completions_v1_url,
                     headers=self.client.headers,
@@ -788,3 +805,68 @@ class AsyncLMDeployClient(AsyncLMDeployServer):
         from lmdeploy.serve.openai.api_client import APIClient
         self.client = APIClient(url)
         self.model_name = model_name
+
+
+class AsyncCustomLMDeployClient(AsyncLMDeployServer):
+    """
+
+    Args:
+        url (str): communicating address 'http://<ip>:<port>' of
+            api_server
+        model_name (str): needed when model_path is a pytorch model on
+            huggingface.co, such as "internlm-chat-7b",
+            "Qwen-7B-Chat ", "Baichuan2-7B-Chat" and so on.
+    """
+
+    def __init__(self, model_name: str, path: str, gpu_id: str, tp: int, host: str = '127.0.0.1', port: str = '8090', **kwargs):
+        BaseLLM.__init__(self, path=path, **kwargs)
+        from lmdeploy.serve.openai.api_client import APIClient
+        self.client = APIClient(api_server_url=f'http://{host}:{port}')
+        self.path = path
+        self.model_name = model_name
+        self.gpu_id = gpu_id
+        self.tp = tp
+        self.host = host
+        self.port = port
+        self.start_server()
+
+    def start_server(self):
+        # set CUDA_VISIBLE_DEVICES in subprocess
+        env = os.environ.copy()
+        env['CUDA_VISIBLE_DEVICES'] = self.gpu_id
+        cmds = [
+            'lmdeploy', 'serve', 'api_server', '--server-name',
+            self.host, '--server-port',
+            str(self.port), '--model-name',
+            self.model_name, '--model-format',
+            'hf', '--tp',
+            str(self.tp), self.path
+        ]
+        self.process = subprocess.Popen(
+            cmds,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True)
+
+        self.service_started = False
+
+        def log_output(stream):
+            if stream is not None:
+                for line in iter(stream.readline, ''):
+                    print(line, end='')  # 打印输出
+                    if 'Uvicorn running on' in line:
+                        self.service_started = True
+                stream.close()
+
+        # 启动日志输出线程
+        threading.Thread(target=log_output, args=(self.process.stdout,), daemon=True).start()
+        threading.Thread(target=log_output, args=(self.process.stderr,), daemon=True).start()
+
+        # 等待服务启动
+        while not self.service_started:
+            time.sleep(1)
+
+    def shutdown(self):
+        self.process.terminate()
+        self.process.wait()

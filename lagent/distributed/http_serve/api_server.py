@@ -65,7 +65,7 @@ class HTTPAgentServer(HTTPAgentClient):
         env = os.environ.copy()
         env['CUDA_VISIBLE_DEVICES'] = self.gpu_id
         cmds = [
-            sys.executable, 'lagent/distributed/http_serve/app.py', '--host',
+            sys.executable, '-m', 'lagent.distributed.http_serve.app', '--host',
             self.host, '--port',
             str(self.port), '--config',
             json.dumps(self.config)

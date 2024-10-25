@@ -2,6 +2,7 @@ import copy
 import warnings
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Union
+from loguru import logger
 
 from lagent.agents.aggregator import DefaultAggregator
 from lagent.hooks import Hook, RemovableHandle
@@ -165,6 +166,8 @@ class Agent:
 
 
 class AsyncAgent(Agent):
+    def __init__(self, llm=None, template=None, memory=dict(type=Memory), output_format=None, aggregator=dict(type=DefaultAggregator), name=None, description=None, hooks=None):
+        super().__init__(llm, template, memory, output_format, aggregator, name, description, hooks)
 
     async def __call__(self,
                        *message: AgentMessage | List[AgentMessage],
@@ -179,21 +182,24 @@ class AsyncAgent(Agent):
             result = hook.before_agent(self, message, session_id)
             if result:
                 message = result
-
         self.update_memory(message, session_id=session_id)
+        logger.info(f'request completion for {self.name}')
         response_message = await self.forward(
             *message, session_id=session_id, **kwargs)
+        logger.info(f'finish completion for {self.name}')
         if not isinstance(response_message, AgentMessage):
             response_message = AgentMessage(
                 sender=self.name,
                 content=response_message,
             )
         self.update_memory(response_message, session_id=session_id)
+        logger.info(f'begin hook.after_agent for {self.name}')
         for hook in self._hooks.values():
             response_message = copy.deepcopy(response_message)
             result = hook.after_agent(self, response_message, session_id)
             if result:
                 response_message = result
+        logger.info(f'end hook.after_agent for {self.name}')
         return response_message
 
     async def forward(self,
