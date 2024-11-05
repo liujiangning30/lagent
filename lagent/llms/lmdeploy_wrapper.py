@@ -824,7 +824,7 @@ class AsyncCustomLMDeployClient(AsyncLMDeployServer):
         self.client = APIClient(api_server_url=f'http://{host}:{port}')
         self.path = path
         self.model_name = model_name
-        self.gpu_id = gpu_id
+        self.gpu_id = ','.join([str(gid) for gid in gpu_id]) if isinstance(gpu_id, tuple) else gpu_id
         self.tp = tp
         self.host = host
         self.port = port
