@@ -51,11 +51,13 @@ class AsyncAPIClient(AsyncGPTAPI):
         self.extra_body = extra_body
         self.session_id = session_id or ctx_session_id.get()
 
-    async def chat(self, messages: List[dict], tools=None, **gen_params) -> dict:
+    async def chat(self, messages: List[dict], tools=None, extra_params=None, **gen_params) -> dict:
         """Generate completion from a list of templates.
 
         Args:
             messages (List[dict]): a list of prompt dictionaries
+            tools: optional tool definitions for function calling
+            extra_params: extra parameters forwarded to the rollout controller
             gen_params: additional generation configuration
 
         Returns:
@@ -76,6 +78,10 @@ class AsyncAPIClient(AsyncGPTAPI):
             payload["tools"] = tools
         if reasoning_effort is not None:
             payload["reasoning_effort"] = reasoning_effort
+        if extra_params is not None:
+            payload["extra_params"] = extra_params
+        elif getattr(self, "_xtuner_extra_params", None):
+            payload["extra_params"] = self._xtuner_extra_params
         if self.extra_body:
             payload.update(self.extra_body)
         if self.session_id is not None:

@@ -65,6 +65,37 @@ class TestBaseExternalAgent:
         assert 'llm_trace' in state
         assert state['llm_trace'] == [{"test": "record"}]
 
+    @pytest.mark.asyncio
+    async def test_get_messages_exposes_policy_agent_alias(self):
+        agent = ConcreteExternalAgent(name="test")
+        await agent("task1")
+
+        messages = agent.get_messages()
+
+        assert 'messages' in messages
+        assert 'tools' in messages
+        assert messages['policy_agent.messages'] == messages['messages']
+        assert messages['policy_agent.tools'] == messages['tools']
+        assert messages['messages'][-1]['role'] == 'assistant'
+        assert 'result: task1' in messages['messages'][-1]['content']
+
+    def test_get_messages_prefers_proxy_trace(self):
+        proxy_messages = [
+            [{'role': 'user', 'content': 'short'}],
+            [
+                {'role': 'user', 'content': 'real prompt'},
+                {'role': 'assistant', 'content': 'real response'},
+            ],
+        ]
+        mock_proxy = MagicMock()
+        mock_proxy.get_messages.return_value = proxy_messages
+        agent = ConcreteExternalAgent(name="test", proxy=mock_proxy)
+
+        messages = agent.get_messages()
+
+        assert messages['messages'] == proxy_messages[-1]
+        assert messages['policy_agent.messages'] == proxy_messages[-1]
+
     def test_build_env_without_proxy(self):
         agent = ConcreteExternalAgent(
             name="test",

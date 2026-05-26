@@ -25,7 +25,7 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from .base import AsyncExternalAgent
+from .base import AsyncExternalAgent, _json_safe
 
 
 class ClaudeCodeSDKAdapter(AsyncExternalAgent):
@@ -218,6 +218,13 @@ class ClaudeCodeSDKAdapter(AsyncExternalAgent):
     def state_dict(self, prefix='', destination=None) -> dict:
         dest = super().state_dict(prefix=prefix, destination=destination)
         dest[prefix + 'sdk_trace'] = list(self._sdk_trace)
+        if self._session_id:
+            dest[prefix + 'claude_session_id'] = self._session_id
+        return dest
+
+    def get_messages(self, prefix='', destination=None) -> Dict[str, Any]:
+        dest = super().get_messages(prefix=prefix, destination=destination)
+        dest[prefix + 'sdk_trace'] = _json_safe(list(self._sdk_trace))
         if self._session_id:
             dest[prefix + 'claude_session_id'] = self._session_id
         return dest

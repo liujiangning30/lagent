@@ -29,13 +29,23 @@ Usage::
     trace = agent.state_dict().get('llm_trace', [])
 """
 
+import json
 import os
 from abc import abstractmethod
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from uuid import uuid4
 
 from lagent.agents.agent import Agent, AsyncAgentMixin
 from lagent.schema import AgentMessage
+
+
+def _json_safe(value: Any) -> Any:
+    """Return a JSON-serializable copy for daemon responses."""
+    try:
+        json.dumps(value, ensure_ascii=False)
+        return value
+    except TypeError:
+        return json.loads(json.dumps(value, ensure_ascii=False, default=str))
 
 
 class BaseExternalAgent(Agent):
@@ -158,6 +168,56 @@ class BaseExternalAgent(Agent):
         if self.proxy:
             dest[prefix + 'llm_trace'] = self.proxy.get_records(self.session_id)
         return dest
+
+    def get_messages(self, prefix='', destination=None) -> Dict[str, List[dict]]:
+        """Return messages for black-box external agents.
+
+        If a proxy recorder is attached, prefer the proxy-captured model
+        conversation because it reflects the real request/response sequence
+        used by the external agent. Otherwise fall back to lagent's wrapper
+        memory, which contains the user task and final external-agent output.
+
+        Top-level external agents also expose ``policy_agent.*`` aliases so
+        sandbox RL code can consume them through the same keys used by the
+        white-box ``FunctionCallAgent`` harness.
+        """
+        if destination is None:
+            destination = {}
+
+        messages = self._get_proxy_messages()
+        tools: List[dict] = []
+        if messages is None:
+            local = super().get_messages(prefix=prefix, destination={})
+            messages = local.get(prefix + 'messages', [])
+            tools = local.get(prefix + 'tools', [])
+
+        messages = _json_safe(messages)
+        tools = _json_safe(tools)
+        destination[prefix + 'messages'] = messages
+        destination[prefix + 'tools'] = tools
+
+        if not prefix:
+            destination['policy_agent.messages'] = messages
+            destination['policy_agent.tools'] = tools
+        return destination
+
+    def _get_proxy_messages(self) -> Optional[List[dict]]:
+        if self.proxy is None or not hasattr(self.proxy, 'get_messages'):
+            return None
+        try:
+            traces = self.proxy.get_messages()
+        except Exception:
+            return None
+        if not traces:
+            return None
+        if isinstance(traces, list) and all(isinstance(item, dict) for item in traces):
+            return traces
+        if not isinstance(traces, list):
+            return None
+        candidates = [trace for trace in traces if isinstance(trace, list)]
+        if not candidates:
+            return None
+        return max(candidates, key=len)
 
     def load_state_dict(self, state_dict: Dict):
         # Filter out llm_trace keys before passing to parent
