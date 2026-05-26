@@ -358,6 +358,19 @@ class AsyncMCPClient(AsyncActionMixin, BaseAction):
         """
         Standard Lagent Action Entrypoint.
         """
+        timeout_sec = self.server_params.get("timeout", 120)
+        try:
+            return await asyncio.wait_for(self._run_impl(**kwargs), timeout=timeout_sec)
+        except asyncio.TimeoutError:
+            logger.warning(f"MCP tool call timed out after {timeout_sec}s")
+            return ActionReturn(
+                type=self.name,
+                content=f"Tool call timed out after {timeout_sec} seconds.",
+                errmsg=f"timeout after {timeout_sec}s",
+            )
+
+    async def _run_impl(self, **kwargs) -> ActionReturn:
+        """Internal implementation of run, separated for timeout control."""
         fallback_args = kwargs.copy()
 
         try:
