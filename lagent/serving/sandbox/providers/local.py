@@ -26,9 +26,24 @@ class LocalClient:
         self.working_dir = working_dir
         os.makedirs(working_dir, exist_ok=True)
 
-    def execute(self, command: str, cwd: str = None, timeout_sec: int = 60) -> dict:
+    def execute(self, command: str, cwd: str = None, timeout_sec: int = 60, detach: bool = False) -> dict:
         cwd = cwd or self.working_dir
         try:
+            if detach:
+                subprocess.Popen(
+                    ["bash", "-lc", command],
+                    cwd=cwd,
+                    start_new_session=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                return {
+                    "ok": True,
+                    "stdout": "",
+                    "stderr": "",
+                    "return_code": 0,
+                }
             # Background commands (ending with &): use Popen so the
             # background process survives after the shell exits.
             if command.rstrip().endswith("&"):

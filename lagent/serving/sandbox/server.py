@@ -43,6 +43,7 @@ def create_fastapi_app():
         command: str
         cwd: str = "/root"
         timeout_sec: int = 60
+        detach: bool = False
 
     class UploadRequest(BaseModel):
         target_path: str
@@ -54,6 +55,16 @@ def create_fastapi_app():
     @app.post("/exec")
     def execute(req: ExecRequest):
         try:
+            if req.detach:
+                subprocess.Popen(
+                    ["bash", "-lc", req.command],
+                    cwd=req.cwd,
+                    start_new_session=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                return {"ok": True, "stdout": "", "stderr": "", "return_code": 0}
             result = subprocess.run(
                 req.command, shell=True, capture_output=True, text=True,
                 cwd=req.cwd, timeout=req.timeout_sec,
@@ -132,7 +143,19 @@ def create_stdlib_server(host: str, port: int):
             command = body.get("command", "")
             cwd = body.get("cwd", "/root")
             timeout_sec = body.get("timeout_sec", 60)
+            detach = bool(body.get("detach", False))
             try:
+                if detach:
+                    subprocess.Popen(
+                        ["bash", "-lc", command],
+                        cwd=cwd,
+                        start_new_session=True,
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    self._respond({"ok": True, "stdout": "", "stderr": "", "return_code": 0})
+                    return
                 result = subprocess.run(
                     command, shell=True, capture_output=True, text=True,
                     cwd=cwd, timeout=timeout_sec,
